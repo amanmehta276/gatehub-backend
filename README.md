@@ -1,211 +1,194 @@
 # GateHub Backend
 
-Node.js + Express backend that replaces the static `ASSETS_REPOSITORY`
-with a real API backed by **MongoDB** and **Cloudinary**.
+Node.js + Express REST API for the GateHub Engineering Resource Platform.
 
----
+## 🚀 Live URL
+```
+https://gatehub-backend.onrender.com
+```
 
-## Folder Structure
+## 🛠️ Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Node.js + Express | Server framework |
+| MongoDB Atlas | Database |
+| Mongoose | ODM for MongoDB |
+| Supabase Storage | PDF file storage |
+| JWT | Authentication |
+| bcryptjs | Password hashing |
+| Multer | File upload handling |
+| @supabase/supabase-js | Supabase SDK |
+
+## 📁 Complete File Map
 
 ```
-gatehub-backend/
+backend/
+│
 ├── config/
-│   ├── cloudinary.js      # Cloudinary SDK init
-│   └── db.js              # MongoDB connection
+│   ├── cloudinary.js          # Cloudinary config (unused, kept for reference)
+│   └── db.js                  # MongoDB Atlas connection
+│
+├── controllers/
+│   ├── fileController.js      # (reserved for future use)
+│   └── subjectController.js   # (reserved for future use)
+│
 ├── middleware/
-│   ├── auth.js            # Admin secret guard
-│   └── upload.js          # Multer (memory) + Cloudinary stream helper
+│   ├── authJWT.js             # JWT verify + admin guard
+│   └── upload.js              # Multer memory storage + Supabase upload helper
+│
 ├── models/
-│   └── File.js            # Mongoose schema for file metadata
+│   ├── File.js                # File schema (subjectId, name, url, type, size)
+│   ├── Subject.js             # Subject schema (_id, name, branch, icon, theme)
+│   └── User.js                # User schema (name, email, password, role)
+│
 ├── routes/
-│   └── files.js           # All /api/files & /api/upload routes
+│   ├── auth.js                # POST /register, POST /login, GET /me
+│   ├── files.js               # GET /:subjectId, POST /upload, POST /link, DELETE /:id
+│   └── subjects.js            # GET /, POST /, DELETE /:id
+│
 ├── scripts/
-│   └── seed.js            # One-time migration of old Google Drive links
-├── .env.example           # Template — copy to .env and fill in values
-├── .gitignore
-├── package.json
-├── server.js              # Express entry point
-└── script.js              # ← REPLACE your frontend script.js with this file
+│   ├── createAdmin.js         # One-time script to create admin account
+│   ├── seed.js                # One-time script to seed old Google Drive links
+│   └── seedSubjects.js        # One-time script to seed all subjects into MongoDB
+│
+├── .env                       # Secret environment variables (NOT committed to GitHub)
+├── .env.example               # Template showing which env vars are needed
+├── .gitignore                 # Ignores node_modules and .env
+├── package.json               # Project metadata and dependencies
+├── package-lock.json          # Exact dependency versions
+├── README.md                  # This file
+└── server.js                  # Express app entry point — mounts all routes
 ```
 
----
+## 🔌 API Endpoints
 
-## Quick Start
-
-### 1. Prerequisites
-
-| Tool | Min version |
-|------|-------------|
-| Node.js | 18 |
-| npm | 9 |
-| MongoDB Atlas account | free tier OK |
-| Cloudinary account | free tier OK |
-
----
-
-### 2. Install dependencies
-
-```bash
-cd gatehub-backend
-npm install
+### Auth
+```
+POST   /api/auth/register    — Student registration
+POST   /api/auth/login       — Login (student + admin)
+GET    /api/auth/me          — Get current user from token
 ```
 
----
-
-### 3. Configure environment variables
-
-```bash
-cp .env.example .env
+### Subjects
+```
+GET    /api/subjects         — Fetch all active subjects (public)
+GET    /api/subjects?branch= — Fetch subjects filtered by branch (public)
+POST   /api/subjects         — Create new subject (admin only)
+DELETE /api/subjects/:id     — Soft delete subject (admin only)
 ```
 
-Open `.env` and fill in:
-
+### Files
 ```
+GET    /api/files/:subjectId — Fetch all files for a subject (public)
+POST   /api/files/upload     — Upload PDF to Supabase (admin only)
+POST   /api/files/link       — Save external link (admin only)
+DELETE /api/files/:fileId    — Soft delete file (admin only)
+```
+
+### Health
+```
+GET    /api/health           — Server health check
+```
+
+## ⚙️ Environment Variables
+
+Create a `.env` file in the root of the backend folder:
+
+```env
 PORT=5000
-MONGO_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/gatehub
-CLOUDINARY_CLOUD_NAME=xxxxx
-CLOUDINARY_API_KEY=xxxxx
-CLOUDINARY_API_SECRET=xxxxx
-ADMIN_SECRET=pick_a_strong_secret
-CLIENT_ORIGIN=http://127.0.0.1:5500    # your frontend origin
+MONGO_URI=your_mongodb_connection_string/dbname?appName=Cluster0
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_KEY=your_supabase_service_role_key
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=7d
+CLIENT_ORIGIN=https://your-frontend-url.netlify.app
 ```
 
-#### Getting MongoDB URI
-1. Go to https://cloud.mongodb.com
-2. Create a free cluster → Connect → Drivers
-3. Copy the connection string and replace `<password>`
-
-#### Getting Cloudinary credentials
-1. Go to https://cloudinary.com → Dashboard
-2. Copy Cloud Name, API Key, API Secret
-
----
-
-### 4. Migrate existing Google Drive links (one-time)
-
-```bash
-node scripts/seed.js
-```
-
-This inserts all your old links into MongoDB so they appear immediately
-without any re-upload.
-
----
-
-### 5. Start the backend
-
-```bash
-# Development (auto-restarts on save)
-npm run dev
-
-# Production
-npm start
-```
-
-You should see:
-```
-✅  MongoDB connected: cluster0.xxxxx.mongodb.net
-🚀  GateHub backend running on http://localhost:5000
-```
-
----
-
-### 6. Connect the frontend
-
-1. **Replace** your old `script.js` with the `script.js` file from this folder.
-2. Open it and set `API_BASE` to your backend URL:
-   ```js
-   // Local development
-   const API_BASE = 'http://localhost:5000/api';
-
-   // After deploying (e.g. Render / Railway)
-   const API_BASE = 'https://gatehub-api.onrender.com/api';
-   ```
-3. Set `ADMIN_SECRET` to match the value in your `.env`.
-4. Keep your `index.html` and `style.css` exactly as they are — zero changes needed.
-
----
-
-## API Reference
-
-### `GET /api/files/:subjectId`
-Returns all active files for a subject.
+## 📦 Dependencies
 
 ```json
 {
-  "success": true,
-  "files": [
-    { "_id": "...", "name": "EPS-Resource-v1.pdf", "url": "https://...", "type": "Cloudinary", "size": "2.40 MB" }
-  ]
+  "@supabase/supabase-js": "^2.99.2",
+  "bcryptjs": "^2.4.3",
+  "cors": "^2.8.5",
+  "dotenv": "^16.4.5",
+  "express": "^4.19.2",
+  "jsonwebtoken": "^9.0.2",
+  "mongoose": "^8.5.1",
+  "multer": "^1.4.5-lts.1",
+  "streamifier": "^0.1.1"
 }
 ```
 
----
+## 🏃 Running Locally
 
-### `POST /api/upload` *(admin)*
-Upload a PDF to Cloudinary. Requires header `x-admin-secret`.
+```bash
+# Install dependencies
+npm install
 
-**Form fields:**
-| Field | Required | Description |
-|-------|----------|-------------|
-| `file` | ✅ | Binary (PDF / Office doc, max 50 MB) |
-| `subjectId` | ✅ | e.g. `eca`, `em_1`, `dsp` |
-| `name` | optional | Display name shown in UI |
+# Start development server (auto-restarts on save)
+npm run dev
 
----
-
-### `POST /api/files/link` *(admin)*
-Save an external (Google Drive) link without uploading. Requires header `x-admin-secret`.
-
-**JSON body:**
-```json
-{ "subjectId": "eca", "name": "My Notes.pdf", "url": "https://drive.google.com/..." }
+# Start production server
+npm start
 ```
 
----
+## 🌱 Seeding the Database
 
-### `DELETE /api/files/:fileId` *(admin)*
-Soft-deletes a file (removes from UI, purges from Cloudinary if applicable).
-Requires header `x-admin-secret`.
+Run these once after first setup:
 
----
+```bash
+# Seed all subjects into MongoDB
+node scripts/seedSubjects.js
 
-## Deploying the Backend
+# Create the admin account
+node scripts/createAdmin.js
+```
 
-Recommended free options: **Render**, **Railway**, or **Fly.io**
+## 🔐 How Auth Works
 
-### Render (easiest)
-1. Push this folder to a GitHub repo
-2. New Web Service → connect repo
-3. Build command: `npm install`
-4. Start command: `npm start`
-5. Add environment variables in the Render dashboard
-6. Copy the generated URL into `API_BASE` in `script.js`
+1. Student registers or logs in → server returns JWT token
+2. Frontend stores token in localStorage
+3. Every admin request sends `Authorization: Bearer <token>` header
+4. `protect` middleware verifies token
+5. `adminOnly` middleware checks role === 'admin'
 
----
-
-## How the Upload Flow Works Now
+## 📤 How File Upload Works
 
 ```
 Admin selects PDF in modal
-        │
-        ▼
-POST /api/upload  (multipart, x-admin-secret header)
-        │
-        ▼
-Multer buffers file in memory  (no disk write)
-        │
-        ▼
-streamUploadToCloudinary()  pipes buffer → Cloudinary
-        │
-        ▼
-Cloudinary returns { secure_url, public_id, bytes }
-        │
-        ▼
-MongoDB saves { subjectId, name, url, type, size, cloudinaryPublicId }
-        │
-        ▼
-Frontend GET /api/files/:subjectId  refreshes the list automatically
+        ↓
+POST /api/files/upload  (multipart/form-data)
+        ↓
+Multer buffers file in memory (no disk write)
+        ↓
+uploadToSupabase() streams buffer → Supabase Storage
+        ↓
+Supabase returns public URL
+        ↓
+MongoDB saves { subjectId, name, url, type, size }
+        ↓
+Frontend refreshes file list automatically
 ```
 
-No more manual link-pasting. No redeployment needed.
+## 🚢 Deployment
+
+Deployed on **Render** (free tier).
+
+| Setting | Value |
+|---|---|
+| Runtime | Node |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Region | Singapore |
+
+All environment variables are set in the Render dashboard under Environment.
+
+## 📝 Notes
+
+- Free Render tier sleeps after 15 minutes of inactivity
+- First request after sleep takes 2-3 minutes to wake up
+- Supabase free tier: 1GB storage, no per-file size limit
+- MongoDB free tier: 512MB database storage
+- `.env` file is never committed — add all vars manually in Render dashboard
