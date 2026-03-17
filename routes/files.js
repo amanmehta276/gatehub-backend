@@ -1,9 +1,34 @@
-// routes/files.js — Supabase Storage version
-const express  = require('express');
-const router   = express.Router();
-const File     = require('../models/File');
+// routes/files.js — Supabase Storage version with storage warning
+const express              = require('express');
+const router               = express.Router();
+const File                 = require('../models/File');
+const { createClient }     = require('@supabase/supabase-js');
 const { upload, uploadToSupabase } = require('../middleware/upload');
 const { protect, adminOnly }       = require('../middleware/authJWT');
+
+// ─── Helper: check total Supabase storage used ────────────────────────────────
+const checkStorageWarning = async () => {
+    try {
+        const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY
+        );
+
+        // Get total bytes from MongoDB (all active Supabase files)
+        const files = await File.find({ type: 'Supabase', isActive: true });
+        const totalBytes = files.reduce((sum, f) => sum + (f.bytes || 0), 0);
+        const totalMB    = totalBytes / (1024 * 1024);
+        const totalGB    = totalMB / 1024;
+
+        // Warn at 800 MB (80% of 1 GB free tier)
+        if (totalGB >= 0.8) {
+            return `⚠️ Storage Warning: ${totalMB.toFixed(0)} MB / 1000 MB used. Create a new Supabase account soon.`;
+        }
+        return null;
+    } catch (err) {
+        return null; // non-fatal
+    }
+};
 
 // GET /api/files/:subjectId  (public)
 router.get('/:subjectId', async (req, res) => {
@@ -55,9 +80,13 @@ router.post('/upload', protect, adminOnly, upload.single('file'), async (req, re
             bytes:              req.file.buffer.length,
         });
 
+        // Check storage warning after upload
+        const warning = await checkStorageWarning();
+
         res.status(201).json({
             success: true,
             message: 'File uploaded successfully.',
+            warning: warning || undefined,
             file: {
                 _id:  newFile._id,
                 name: newFile.name,
