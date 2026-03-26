@@ -1,8 +1,9 @@
 # GateHub Backend
 
-Node.js + Express REST API for the GateHub Engineering Resource Platform.
+Node.js + Express REST API for the GateHub Engineering Resource Platform. Handles authentication, subject management, and file storage via Supabase.
 
-## 🚀 Live URL
+## 🌐 Live URL
+
 ```
 https://gatehub-backend.onrender.com
 ```
@@ -12,113 +13,406 @@ https://gatehub-backend.onrender.com
 | Technology | Purpose |
 |---|---|
 | Node.js + Express | Server framework |
-| MongoDB Atlas | Database |
+| MongoDB Atlas | Database (db: `aman`) |
 | Mongoose | ODM for MongoDB |
-| Supabase Storage | PDF file storage |
-| JWT | Authentication |
+| Supabase Storage | PDF file storage (bucket: `pdfs`) |
+| JWT | Authentication tokens |
 | bcryptjs | Password hashing |
-| Multer | File upload handling |
+| Multer | File upload handling (memory storage) |
 | @supabase/supabase-js | Supabase SDK |
+| dotenv | Environment variable management |
+| cors | Cross-origin request handling |
 
-## 📁 Complete File Map
+## 📁 File Structure
 
 ```
 backend/
 │
 ├── config/
-│   ├── cloudinary.js          # Cloudinary config (unused, kept for reference)
-│   └── db.js                  # MongoDB Atlas connection
+│   ├── db.js                  # MongoDB Atlas connection via Mongoose
+│   └── cloudinary.js          # Cloudinary config (unused, kept for reference)
 │
 ├── controllers/
-│   ├── fileController.js      # (reserved for future use)
-│   └── subjectController.js   # (reserved for future use)
+│   ├── subjectController.js   # Reserved for future refactor
+│   └── fileController.js      # Reserved for future refactor
 │
 ├── middleware/
-│   ├── authJWT.js             # JWT verify + admin guard
+│   ├── authJWT.js             # JWT verify middleware + admin guard
 │   └── upload.js              # Multer memory storage + Supabase upload helper
 │
 ├── models/
-│   ├── File.js                # File schema (subjectId, name, url, type, size)
-│   ├── Subject.js             # Subject schema (_id, name, branch, icon, theme)
-│   └── User.js                # User schema (name, email, password, role)
+│   ├── User.js                # User schema
+│   ├── Subject.js             # Subject schema
+│   └── File.js                # File schema
 │
 ├── routes/
-│   ├── auth.js                # POST /register, POST /login, GET /me
-│   ├── files.js               # GET /:subjectId, POST /upload, POST /link, DELETE /:id
-│   └── subjects.js            # GET /, POST /, DELETE /:id
+│   ├── auth.js                # Auth routes
+│   ├── subjects.js            # Subject CRUD routes
+│   └── files.js               # File upload/fetch/delete routes
 │
 ├── scripts/
-│   ├── createAdmin.js         # One-time script to create admin account
-│   ├── seed.js                # One-time script to seed old Google Drive links
-│   └── seedSubjects.js        # One-time script to seed all subjects into MongoDB
+│   ├── createAdmin.js         # One-time script to seed admin account
+│   ├── seedSubjects.js        # One-time script to seed all subjects
+│   └── seed.js                # One-time script to seed Google Drive links
 │
-├── .env                       # Secret environment variables (NOT committed to GitHub)
-├── .env.example               # Template showing which env vars are needed
+├── .env                       # Secret environment variables (NOT committed)
+├── .env.example               # Template for required env vars
 ├── .gitignore                 # Ignores node_modules and .env
-├── package.json               # Project metadata and dependencies
-├── package-lock.json          # Exact dependency versions
-├── README.md                  # This file
-└── server.js                  # Express app entry point — mounts all routes
+├── package.json               # Dependencies and scripts
+└── server.js                  # Express app entry point
+```
+
+## 🗄️ Database Schemas
+
+### User
+
+```js
+{
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true,
+    },
+    password: {
+        type: String,
+        required: true,
+        minlength: 6,
+        // Stored as bcrypt hash — never plain text
+    },
+    role: {
+        type: String,
+        enum: ['student', 'admin'],
+        default: 'student',
+    },
+    isActive: {
+        type: Boolean,
+        default: true,
+    },
+    createdAt: Date,  // auto via timestamps
+    updatedAt: Date,  // auto via timestamps
+}
+```
+
+### Subject
+
+```js
+{
+    _id: {
+        type: String,
+        // Custom string ID e.g. 'em_1', 'dsp', 'eca'
+        // Auto-generated on create: name.toLowerCase().replace spaces → _ + timestamp suffix
+    },
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+        // e.g. 'Electrical Machines 1'
+    },
+    branch: {
+        type: String,
+        required: true,
+        enum: ['Electrical', 'Electronics', 'CS & IT', 'Mechanical', 'Civil'],
+    },
+    description: {
+        type: String,
+        default: '',
+        // Short summary shown on subject card
+    },
+    icon: {
+        type: String,
+        default: 'book',
+        // Lucide icon name e.g. 'zap', 'cpu', 'activity', 'settings', 'home'
+    },
+    theme: {
+        type: String,
+        default: 'branch-cs',
+        // CSS class for card color: 'branch-elec' | 'branch-extc' | 'branch-cs' | 'branch-mech' | 'branch-civ'
+    },
+    isMain: {
+        type: Boolean,
+        default: false,
+        // true = shown on 'All Streams' default view
+    },
+    isActive: {
+        type: Boolean,
+        default: true,
+        // false = soft deleted, hidden from all queries
+    },
+    createdAt: Date,
+    updatedAt: Date,
+}
+```
+
+### File
+
+```js
+{
+    subjectId: {
+        type: String,
+        required: true,
+        lowercase: true,
+        // References Subject._id e.g. 'em_1'
+    },
+    name: {
+        type: String,
+        required: true,
+        trim: true,
+        // Display name shown in UI e.g. 'Single Phase Transformers.pdf'
+    },
+    url: {
+        type: String,
+        required: true,
+        // Public URL — Supabase public URL or Google Drive link
+    },
+    cloudinaryPublicId: {
+        type: String,
+        default: '',
+        // Stores Supabase storage path e.g. 'em_1/1720000000_notes.pdf'
+        // Used for future deletion from Supabase
+    },
+    type: {
+        type: String,
+        default: 'Supabase',
+        // 'Supabase' | 'Google Drive' | 'External'
+    },
+    size: {
+        type: String,
+        default: 'Cloud Access',
+        // Human-readable e.g. '4.20 MB' or 'Cloud Access'
+    },
+    bytes: {
+        type: Number,
+        default: 0,
+        // Raw byte count — used for storage usage calculation
+    },
+    isActive: {
+        type: Boolean,
+        default: true,
+        // false = soft deleted
+    },
+    createdAt: Date,
+    updatedAt: Date,
+}
 ```
 
 ## 🔌 API Endpoints
 
-### Auth
-```
-POST   /api/auth/register    — Student registration
-POST   /api/auth/login       — Login (student + admin)
-GET    /api/auth/me          — Get current user from token
+### Auth — `/api/auth`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/register` | None | Register a new student account |
+| POST | `/login` | None | Login for student or admin |
+| GET | `/me` | Bearer token | Get current logged-in user |
+
+**POST `/register`** request body:
+```json
+{
+    "name": "John Doe",
+    "email": "john@college.edu",
+    "password": "mypassword"
+}
 ```
 
-### Subjects
-```
-GET    /api/subjects         — Fetch all active subjects (public)
-GET    /api/subjects?branch= — Fetch subjects filtered by branch (public)
-POST   /api/subjects         — Create new subject (admin only)
-DELETE /api/subjects/:id     — Soft delete subject (admin only)
-```
-
-### Files
-```
-GET    /api/files/:subjectId — Fetch all files for a subject (public)
-POST   /api/files/upload     — Upload PDF to Supabase (admin only)
-POST   /api/files/link       — Save external link (admin only)
-DELETE /api/files/:fileId    — Soft delete file (admin only)
+**POST `/login`** request body:
+```json
+{
+    "email": "admin@gatehub.com",
+    "password": "Admin@1234"
+}
 ```
 
-### Health
+**Response (both auth routes):**
+```json
+{
+    "success": true,
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+        "_id": "64abc...",
+        "name": "John Doe",
+        "email": "john@college.edu",
+        "role": "student"
+    }
+}
 ```
-GET    /api/health           — Server health check
+
+---
+
+### Subjects — `/api/subjects`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/` | None | Fetch all active subjects |
+| GET | `/?branch=Electrical` | None | Fetch subjects filtered by branch |
+| POST | `/` | Admin only | Create a new subject |
+| PATCH | `/:id` | Admin only | Edit subject name/branch/description |
+| DELETE | `/:id` | Admin only | Soft delete a subject |
+
+**POST `/`** request body:
+```json
+{
+    "_id": "my_subject_1234",
+    "name": "My Subject",
+    "branch": "Electrical",
+    "description": "Optional description",
+    "icon": "zap",
+    "theme": "branch-elec",
+    "isMain": false
+}
+```
+
+**PATCH `/:id`** request body:
+```json
+{
+    "name": "Updated Subject Name",
+    "branch": "Electronics",
+    "description": "Updated description"
+}
+```
+
+**GET `/` response:**
+```json
+{
+    "success": true,
+    "subjects": [
+        {
+            "_id": "em_1",
+            "name": "Electrical Machines 1",
+            "branch": "Electrical",
+            "description": "DC machines and transformers.",
+            "icon": "zap",
+            "theme": "branch-elec",
+            "isMain": false,
+            "isActive": true
+        }
+    ]
+}
+```
+
+---
+
+### Files — `/api/files`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/:subjectId` | None | Fetch all active files for a subject |
+| POST | `/upload` | Admin only | Upload PDF to Supabase Storage |
+| POST | `/link` | Admin only | Save an external/Google Drive link |
+| DELETE | `/:fileId` | Admin only | Soft delete a file |
+
+**POST `/upload`** — multipart/form-data:
+```
+file        → PDF or document file (max 200 MB)
+subjectId   → e.g. 'em_1'
+name        → optional display name
+```
+
+**POST `/link`** request body:
+```json
+{
+    "subjectId": "em_1",
+    "name": "Electrical Machines Notes.pdf",
+    "url": "https://drive.google.com/file/d/...",
+    "type": "Google Drive",
+    "size": "Cloud Access"
+}
+```
+
+**GET `/:subjectId` response:**
+```json
+{
+    "success": true,
+    "files": [
+        {
+            "_id": "64xyz...",
+            "name": "Single Phase Transformers.pdf",
+            "url": "https://chcqisnvvsrpicelthbw.supabase.co/storage/v1/object/public/pdfs/em_1/...",
+            "type": "Supabase",
+            "size": "4.20 MB"
+        }
+    ]
+}
+```
+
+---
+
+### Health — `/api/health`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/health` | Server health check |
+
+```json
+{ "status": "ok" }
+```
+
+## 🔐 Auth Middleware
+
+**`protect`** — verifies JWT from `Authorization: Bearer <token>` header, attaches `req.user`.
+
+**`adminOnly`** — checks `req.user.role === 'admin'`, returns 403 if not.
+
+Usage in routes:
+```js
+router.patch('/:id', protect, adminOnly, async (req, res) => { ... });
+```
+
+## 📤 File Upload Flow
+
+```
+Admin selects PDF in modal
+        ↓
+POST /api/files/upload  (multipart/form-data)
+        ↓
+Multer buffers file in memory (no disk write)
+        ↓
+uploadToSupabase() streams buffer → Supabase Storage bucket 'pdfs'
+        ↓
+Supabase returns public URL
+        ↓
+MongoDB saves { subjectId, name, url, type, size, bytes }
+        ↓
+Backend checks total storage (warns at 800 MB / 1 GB free tier)
+        ↓
+Frontend refreshes file list automatically
 ```
 
 ## ⚙️ Environment Variables
 
-Create a `.env` file in the root of the backend folder:
+Create a `.env` file in the backend root:
 
 ```env
 PORT=5000
-MONGO_URI=your_mongodb_connection_string/dbname?appName=Cluster0
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
-JWT_SECRET=your_jwt_secret_key
+MONGO_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/aman?appName=Cluster0
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_KEY=<your-supabase-service-role-key>
+JWT_SECRET=<your-jwt-secret>
 JWT_EXPIRES_IN=7d
-CLIENT_ORIGIN=https://your-frontend-url.netlify.app
+CLIENT_ORIGIN=https://projectalps.netlify.app
 ```
 
-## 📦 Dependencies
+> ⚠️ Never commit `.env` — it is in `.gitignore`. Add all vars manually in the Render dashboard.
 
-```json
-{
-  "@supabase/supabase-js": "^2.99.2",
-  "bcryptjs": "^2.4.3",
-  "cors": "^2.8.5",
-  "dotenv": "^16.4.5",
-  "express": "^4.19.2",
-  "jsonwebtoken": "^9.0.2",
-  "mongoose": "^8.5.1",
-  "multer": "^1.4.5-lts.1",
-  "streamifier": "^0.1.1"
-}
+## 🌱 Seeding the Database
+
+Run these scripts once after first setup:
+
+```bash
+# Create the admin account
+node scripts/createAdmin.js
+
+# Seed all subjects into MongoDB
+node scripts/seedSubjects.js
+
+# (Optional) Seed old Google Drive file links
+node scripts/seed.js
 ```
 
 ## 🏃 Running Locally
@@ -134,47 +428,11 @@ npm run dev
 npm start
 ```
 
-## 🌱 Seeding the Database
-
-Run these once after first setup:
-
-```bash
-# Seed all subjects into MongoDB
-node scripts/seedSubjects.js
-
-# Create the admin account
-node scripts/createAdmin.js
-```
-
-## 🔐 How Auth Works
-
-1. Student registers or logs in → server returns JWT token
-2. Frontend stores token in localStorage
-3. Every admin request sends `Authorization: Bearer <token>` header
-4. `protect` middleware verifies token
-5. `adminOnly` middleware checks role === 'admin'
-
-## 📤 How File Upload Works
-
-```
-Admin selects PDF in modal
-        ↓
-POST /api/files/upload  (multipart/form-data)
-        ↓
-Multer buffers file in memory (no disk write)
-        ↓
-uploadToSupabase() streams buffer → Supabase Storage
-        ↓
-Supabase returns public URL
-        ↓
-MongoDB saves { subjectId, name, url, type, size }
-        ↓
-Frontend refreshes file list automatically
-```
+Server runs on `http://localhost:5000`
 
 ## 🚢 Deployment
 
-Deployed on **Render** (free tier).
+Hosted on **Render** (free tier).
 
 | Setting | Value |
 |---|---|
@@ -183,12 +441,18 @@ Deployed on **Render** (free tier).
 | Start Command | `npm start` |
 | Region | Singapore |
 
-All environment variables are set in the Render dashboard under Environment.
+> Free Render tier sleeps after 15 minutes of inactivity. First request after sleep takes ~2 minutes to wake up.
 
-## 📝 Notes
+## 📦 Storage Plan
 
-- Free Render tier sleeps after 15 minutes of inactivity
-- First request after sleep takes 2-3 minutes to wake up
-- Supabase free tier: 1GB storage, no per-file size limit
-- MongoDB free tier: 512MB database storage
-- `.env` file is never committed — add all vars manually in Render dashboard
+| Provider | Free Tier | Status |
+|---|---|---|
+| Supabase Storage | 1 GB | ✅ Active |
+| Cloudflare R2 | 10 GB | 🔜 Planned migration at ~800 MB |
+
+Migration will only require updating `upload.js` and `files.js`.
+
+## 🔗 Related
+
+- **Frontend Repo**: [gatehub-frontend](https://github.com/amanmehta276/gatehub-frontend)
+- **Live Frontend**: https://projectalps.netlify.app
