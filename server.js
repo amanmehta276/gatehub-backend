@@ -15,7 +15,7 @@ connectDB();
 
 app.use(cors({
     origin:         process.env.CLIENT_ORIGIN || '*',
-    methods:        ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    methods:        ['GET', 'POST', 'DELETE','PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 

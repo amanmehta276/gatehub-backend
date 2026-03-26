@@ -83,4 +83,22 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
     }
 });
 
+// PATCH /api/subjects/:id — edit subject (admin only)
+router.patch('/:id', protect, adminOnly, async (req, res) => {
+    try {
+        const { name, description, branch } = req.body;
+        if (!name) return res.status(400).json({ success: false, message: 'Name is required.' });
+
+        const subject = await Subject.findByIdAndUpdate(
+            req.params.id,
+            { name, description, branch },
+            { new: true }
+        );
+        if (!subject) return res.status(404).json({ success: false, message: 'Subject not found.' });
+        res.json({ success: true, subject });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 module.exports = router;
