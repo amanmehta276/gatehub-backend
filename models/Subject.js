@@ -17,7 +17,7 @@ const SubjectSchema = new mongoose.Schema(
         branch: {
             type:     String,
             required: [true, 'Branch is required'],
-            enum:     ['Electrical', 'Electronics', 'CS & IT', 'Mechanical', 'Civil'],
+            enum:     ['Basic Science','Electrical', 'Electronics', 'CS & IT', 'Mechanical', 'Civil'],
         },
         description: {
             type:    String,
